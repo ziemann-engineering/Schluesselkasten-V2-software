@@ -81,13 +81,13 @@ Required settings include:
 - `HW_revision` — hardware revision string
 - `SMALL_COMPARTMENTS` — number of standard compartments
 - `LARGE_COMPARTMENTS` — number of large compartments
-- `FLINK_URL` — base URL of the Flink instance (e.g. `https://maw.flink.coop/api/...`)
+- `FLINK_URL` — base URL of the Flink instance (e.g. `https://your-flink-instance.flink.coop`)
 - `FLINK_API_KEY` — API key for Flink authentication
 - `ADAFRUIT_IO_USERNAME` — Adafruit IO username for MQTT logging
 - `ADAFRUIT_IO_KEY` — Adafruit IO API key
 - `ADAFRUIT_IO_FEED` — Adafruit IO feed name
 - `NFC` — NFC settings (master key, app ID, system ID)
-- `NFC-tags` — mapping of NFC tag UIDs to compartment numbers (for tag-based access)
+- `NFC-tags` — mapping of NFC tag UIDs to compartment numbers for tag-based access (note: key name uses a hyphen as required by the TOML parser)
 - `brightness_adjustment`, `max_brightness`, `min_backlight` — display backlight tuning
 
 Localisation strings are loaded from `assets/settings/lang_<code>.toml` files (e.g. `lang_en.toml`, `lang_de.toml`).
