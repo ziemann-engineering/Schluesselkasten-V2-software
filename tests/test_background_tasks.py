@@ -150,29 +150,24 @@ def test_backlight_unchanged_within_deadband():
 
 
 def test_backlight_clamps_to_100():
+    # lux=0 → target=0, error = 100 - 0 = 100 > 3 → decrease by 1 → new_DC = 99
     new_dc = compute_new_backlight(
         current_DC=100, lux=0, brightness_adjustment=1.0,
         max_brightness=1000, min_backlight=5
     )
-    # error = 100 - 0 = 100 → decrease → 99, but cap shouldn't trigger here
-    # Let's force it: start at 100 and target > 100 (impossible) → stays 100
-    assert new_dc == 99  # one step decrease from 100
+    assert new_dc == 99  # one step decrease; clamping to 100 is not needed here
 
 
 def test_backlight_clamps_to_min_backlight():
+    # current_DC=5, target = 1.0*100*10000/100 = 10000 (>>100)
+    # error = 5 - 10000 = -9995 → increase by 1 → new_DC = 6
+    # 6 > min_backlight=5, so no clamping occurs
     new_dc = compute_new_backlight(
-        current_DC=5, lux=10000, brightness_adjustment=1.0,
-        max_brightness=1000, min_backlight=5
-    )
-    # target = 1000 → error = 5 - 1000 = -995 → increase → new_DC = 6, but
-    # clamping: new_DC = 6 which is above min_backlight=5, so result is 6
-    # Let's use lux that would go below min:
-    # if current=5, min=5, error < -3 → new_DC would be 4 → clamped to 5
-    new_dc2 = compute_new_backlight(
         current_DC=5, lux=10000, brightness_adjustment=1.0,
         max_brightness=100, min_backlight=10
     )
-    assert new_dc2 == 10  # clamped at min_backlight
+    # new_DC would be 6, but min_backlight=10 → clamped to 10
+    assert new_dc == 10  # clamped at min_backlight
 
 
 # ---------------------------------------------------------------------------

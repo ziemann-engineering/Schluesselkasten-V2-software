@@ -12,7 +12,8 @@ import pytest
 import responses as resp_lib
 from unittest.mock import MagicMock
 
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import flink as flink_module

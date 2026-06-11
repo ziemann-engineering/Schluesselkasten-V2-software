@@ -125,7 +125,7 @@ def test_set_charge_current_1000mA(bq, mock_device):
     bq.set_charge_current(1000)
     reg, data = mock_device.writes[-1]
     assert reg == 0x02
-    expected = int(1000 / 40) << 5  # = 800 = 0x0320
+    expected = int(1000 / 40) << 5  # 25 << 5 = 800
     written_val = int.from_bytes(data, "little")
     assert written_val == expected
 
