@@ -8,14 +8,14 @@ import platform
 
 import hardware_V2 as hardware
 
+from version import __version__
+
 logging.getLogger("flet").setLevel(logging.WARNING)
 logging.getLogger("flet_web").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-__version__ = "2.0.0-beta5"
-
-def start_GUI(settings, toml, localization, flink, nfc, errors, background_tasks):
-    ft.app(target=UI(settings, toml, localization, flink, nfc, errors, background_tasks))
+def start_GUI(settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks):
+    ft.app(target=UI(settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks))
 
 class DigitButton(ft.ElevatedButton):
     def __init__(self, text, button_clicked, ui):
@@ -83,7 +83,7 @@ class NumberPad(ft.Container):
 
 
 class UI():
-    def __init__(self, settings, toml, localization, flink, nfc, errors, background_tasks):
+    def __init__(self, settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks):
         self.__page = None
         self.main_color = settings["UI_color"]
         self.settings = settings
@@ -94,6 +94,7 @@ class UI():
         self.flink = flink
         self.nfc = nfc
         self.errors = errors
+        self.errors_lock = errors_lock
         self.background_tasks = background_tasks
         
     def __call__(self, flet_page: ft.Page):
@@ -168,7 +169,7 @@ class UI():
                 ft.Card(content=ft.Container(content=ft.Text(value=self.text["service_menu"], color=self.main_color, text_align=ft.TextAlign.LEFT, size=35, style=ft.TextStyle(weight=ft.FontWeight.BOLD)), padding=10),color=ft.Colors.WHITE, margin=0),
                 ft.Row([
                     ft.ElevatedButton(text=self.text["close_app"],on_click=self.btn_dec(lambda _: subprocess.call("./stop.sh")), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
-                    ft.ElevatedButton(text=self.text["restart_app"], on_click=self.btn_dec(lambda _: subprocess.call("systemctl --user restart schluesselkasten.service")), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
+                    ft.ElevatedButton(text=self.text["restart_app"], on_click=self.btn_dec(lambda _: subprocess.call(["systemctl", "--user", "restart", "schluesselkasten.service"])), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
                 ]),
                 ft.Row([
                     ft.ElevatedButton(text=self.text["open_all"],on_click=self.btn_dec(self.open_all_clicked), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
@@ -526,18 +527,25 @@ class UI():
         hardware.open_mounting()
         
     def reconfigure_appbar(self):
-        if len(self.errors) > 0 and self.page.appbar.title == self.titletext:
+        with self.errors_lock:
+            has_errors = len(self.errors) > 0
+            flink_err   = "flink"       in self.errors
+            ping_err    = "ping"        in self.errors
+            power_err   = "power"       in self.errors
+            battery_err = "battery"     in self.errors
+            misc_err    = bool({i for i in {"NFC", "compartments", "lux", "MQTT", "rpi"} if i in self.errors})
+        if has_errors and self.page.appbar.title == self.titletext:
             self.page.appbar.title = self.info_bar
-            self.info_bar_row.controls = self.info_bar_row.controls[0:1] # clear symbols
-            if "flink" in self.errors:
-                self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.CLOUD_OFF, color=ft.Colors.WHITE)) 
-            if "ping" in self.errors:
+            self.info_bar_row.controls = self.info_bar_row.controls[0:1]
+            if flink_err:
+                self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.CLOUD_OFF, color=ft.Colors.WHITE))
+            if ping_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.WIFI_OFF, color=ft.Colors.WHITE))
-            if "power" in self.errors:
+            if power_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.POWER_OFF, color=ft.Colors.WHITE))
-            if "battery" in self.errors:
+            if battery_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.BATTERY_0_BAR, color=ft.Colors.WHITE))
-            if [i for i in {"NFC", "compartments", "lux", "MQTT", "rpi"} if i in self.errors]:
+            if misc_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.ENGINEERING, color=ft.Colors.WHITE))
         else:
             self.page.appbar.title = self.titletext
@@ -549,7 +557,8 @@ class UI():
         self.temp_text.value = f"CPU temperature: {hardware.get_temp()} °C"
         self.memory_text.value = f"Memory available: {hardware.get_memory_info()}"
         self.uptime_text.value = f"Uptime: {hardware.uptime()}"
-        self.error_text.value = f"Errors: {self.errors}"
+        with self.errors_lock:
+            self.error_text.value = f"Errors: {dict(self.errors)}"
         # Add new lines for backlight and brightness
         if hardware.light_sensor is not None:
             self.brightness_text.value = f"Ambient brightness: {hardware.light_sensor.lux:.2f} lux, Display brightness: {hardware.backlight._duty_cycle}%"
