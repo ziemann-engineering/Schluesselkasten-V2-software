@@ -287,7 +287,8 @@ def background_tasks(ui):
                     new_DC = current_DC + 1
 
                 new_DC = max(settings["min_backlight"], min(100, new_DC))
-                hardware.backlight.change_duty_cycle(new_DC)
+                if new_DC != current_DC:
+                    hardware.backlight.change_duty_cycle(new_DC)
 
                 with errors_lock:
                     errors.pop("lux", None)
