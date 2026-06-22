@@ -8,12 +8,12 @@
 import time
 import digitalio
 
-__version__ = "2.0.0-beta4"
+from version import __version__
 
 maximum_on_time = 2 # set maximum lock on time
 check_time = 0.1 # time to sleep between door checks
 
-class compartment():
+class Compartment():
     def __init__(self, input_pin, output_pin): # initialize with one IO pair
         self.type = "small" # small, big (only one, set manually)
         self.door_status = "closed" # closed, open, error (e.g. detected open without command)
@@ -63,11 +63,11 @@ class compartment():
             self.LED_connector.update_strip(sleep_duration=0.001)                  
             
     def is_open(self):
-        open = True
+        is_door_open = True
         for input in self.status_inputs:
             if not input.value: # count inputs which are low -> switch is pressed, door is closed (considered closed if one switch is pressed)
-                open = False
-        return open  # if sum > 0, door is closed
+                is_door_open = False
+        return is_door_open  # if sum > 0, door is closed
 
     def set_outputs(self, status):
         for output in self.lock_outputs:
