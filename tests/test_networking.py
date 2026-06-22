@@ -17,6 +17,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # conftest.py satisfies that import.
 import networking
 
+# Token used in all test commands; must be set on networking._command_token
+# before calling process_mqtt_command.
+_TEST_TOKEN = "test_token"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,6 +31,15 @@ def _make_compartments(*indices):
     return {str(i): MagicMock() for i in indices}
 
 
+@pytest.fixture(autouse=True)
+def set_command_token():
+    """Install a known command token for every test and restore afterwards."""
+    original = networking._command_token
+    networking._command_token = _TEST_TOKEN
+    yield
+    networking._command_token = original
+
+
 # ---------------------------------------------------------------------------
 # "status" command
 # ---------------------------------------------------------------------------
@@ -35,7 +48,7 @@ def test_status_all_calls_check_all(monkeypatch):
     mock_hw = sys.modules["hardware_V2"]
     mock_hw.check_all.return_value = []
 
-    networking.process_mqtt_command("status all")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} status all")
 
     mock_hw.check_all.assert_called()
 
@@ -45,9 +58,9 @@ def test_status_specific_compartment(monkeypatch):
     comps = _make_compartments(1, 2, 3)
     mock_hw.compartments = comps
 
-    networking.process_mqtt_command("status 2")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} status 2")
 
-    comps["2"].get_inputs.assert_called()
+    comps["2"].is_open.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +70,7 @@ def test_status_specific_compartment(monkeypatch):
 def test_open_all_calls_open_all(monkeypatch):
     mock_hw = sys.modules["hardware_V2"]
 
-    networking.process_mqtt_command("open all")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} open all")
 
     mock_hw.open_all.assert_called()
 
@@ -67,7 +80,7 @@ def test_open_specific_compartment(monkeypatch):
     comps = _make_compartments(1, 2, 3)
     mock_hw.compartments = comps
 
-    networking.process_mqtt_command("open 2")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} open 2")
 
     comps["2"].open.assert_called()
 
@@ -78,7 +91,7 @@ def test_open_compartment_out_of_range_does_not_raise(monkeypatch):
     mock_hw.compartments = comps
 
     # Compartment "5" does not exist; must not raise
-    networking.process_mqtt_command("open 5")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} open 5")
 
 
 # ---------------------------------------------------------------------------
@@ -89,18 +102,18 @@ def test_restart_device_calls_subprocess(monkeypatch):
     mock_run = MagicMock()
     monkeypatch.setattr("networking.subprocess.run", mock_run)
 
-    networking.process_mqtt_command("restart device")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} restart device")
 
-    mock_run.assert_called_once_with("sudo reboot now", shell=True)
+    mock_run.assert_called_once_with(["sudo", "reboot", "now"])
 
 
 def test_restart_software_calls_subprocess(monkeypatch):
     mock_run = MagicMock()
     monkeypatch.setattr("networking.subprocess.run", mock_run)
 
-    networking.process_mqtt_command("restart software")
+    networking.process_mqtt_command(f"{_TEST_TOKEN} restart software")
 
-    mock_run.assert_called_once_with("./start.sh")
+    mock_run.assert_called_once_with(["./start.sh"])
 
 
 # ---------------------------------------------------------------------------
