@@ -17,8 +17,6 @@ cd ~/Schluesselkasten-V2-software/
 
 source ../SKV2-env/bin/activate # enable venv
 
-# start the main application. Do not use & here, as systemd will then think the service has ended.
-# flet run also watches main.py, but reloads may fail
-# for some reason, main.py currently does not launch the GUI
-#python main.py
-flet run
+python main.py
+#flet run &
+

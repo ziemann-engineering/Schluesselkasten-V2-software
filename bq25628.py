@@ -95,7 +95,7 @@ class BQ25628:
 
     def get_charge_current(self):
         val = self._read_register(self.REG_CHARGE_CURRENT_LIMIT, 2)
-        return int.from_bytes(val >> 5, 'little') * 40
+        return (int.from_bytes(val, 'little') >> 5) * 40
 
     # charge voltage
     def set_charge_voltage(self, voltage_mv):
@@ -109,7 +109,7 @@ class BQ25628:
 
     def get_charge_voltage(self):
         val = self._read_register(self.REG_CHARGE_VOLTAGE_LIMIT, 2)
-        return int.from_bytes(val >> 3, 'little') * 10
+        return (int.from_bytes(val, 'little') >> 3) * 10
 
     # input current limit
     def set_input_current_limit(self, iindpm_ma):
@@ -123,7 +123,7 @@ class BQ25628:
 
     def get_input_current_limit(self):
         val = self._read_register(self.REG_INPUT_CURRENT_LIMIT, 2)
-        return int.from_bytes(val >> 4, 'little')* 20
+        return (int.from_bytes(val, 'little') >> 4) * 20
     
     # input voltage limit
     def set_input_voltage_limit(self, vindpm_mv):
@@ -137,7 +137,7 @@ class BQ25628:
 
     def get_input_voltage_limit(self):
         val = self._read_register(self.REG_INPUT_VOLTAGE_LIMIT, 2)
-        return int.from_bytes(val >> 5, 'little')
+        return (int.from_bytes(val, 'little') >> 5) * 40
     
     # VOTG regulation
     def set_votg_regulation(self, voltage_mv):
@@ -151,7 +151,7 @@ class BQ25628:
 
     def get_votg_regulation(self):
         val = self._read_register(self.REG_VOTG_REGULATION, 2)
-        return int.from_bytes(val >> 6, 'little') * 80    
+        return (int.from_bytes(val, 'little') >> 6) * 80
 
     # minimal system voltage
     def set_minimal_system_voltage(self, voltage_mv):   
@@ -165,7 +165,7 @@ class BQ25628:
 
     def get_minimal_system_voltage(self):
         val = self._read_register(self.REG_MINIMAL_SYSTEM_VOLTAGE, 2)
-        return int.from_bytes(val >> 6, 'little') * 80  
+        return (int.from_bytes(val, 'little') >> 6) * 80
 
     # pre-charge control
     def set_precharge_current(self, current_ma):    
@@ -179,7 +179,7 @@ class BQ25628:
 
     def get_precharge_current(self):
         val = self._read_register(self.REG_PRECHG_CONTROL, 2)
-        return int.from_bytes(val >> 3, 'little') * 10
+        return (int.from_bytes(val, 'little') >> 3) * 10
     
     # termination control
     def set_termination_current(self, current_ma):
@@ -193,7 +193,7 @@ class BQ25628:
 
     def get_termination_current(self):
         val = self._read_register(self.REG_TERMINATION_CONTROL, 2)
-        return int.from_bytes(val >> 3, 'little') * 10
+        return (int.from_bytes(val, 'little') >> 3) * 10
 
     # charge control
     def enable_charging(self, enable=True):
@@ -213,15 +213,6 @@ class BQ25628:
             reg &= ~0x01
         self._write_register(self.REG_CHARGER_CONTROL_0, reg)
 
-    # force battery discharge current
-    def force_discharge(self, enable=True):
-        reg = int.from_bytes(self._read_register(self.REG_CHARGER_CONTROL_0))
-        if enable:
-            reg |= 1 << 6
-        else:
-            reg &= ~(1 << 6)
-        self._write_register(self.REG_CHARGER_CONTROL_0, reg)
-
     # tempsense control (inverted logic)
     def enable_tempsense(self, enable=True):
         reg = int.from_bytes(self._read_register(self.REG_NTC_CONTROL_0))
@@ -230,15 +221,6 @@ class BQ25628:
         else:
             reg |= 1 << 7
         self._write_register(self.REG_NTC_CONTROL_0, reg)
-
-    # set/reset one bit (._write_bit(0x16, 6, 1, 0))
-    def _write_bit(self, register: int, bit_position: int, value: int) -> None:
-        reg = int.from_bytes(self._read_register(register))
-        if value == 1 or value is True:
-            reg |= 1 << bit_position
-        else:
-            reg &= ~(1 << bit_position)
-        self._write_register(self.register, reg)
 
     # charger status
     def get_charger_status(self):

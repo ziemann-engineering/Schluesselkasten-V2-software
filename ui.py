@@ -6,14 +6,16 @@ import threading
 import logging
 import platform
 
+import hardware_V2 as hardware
+
+from version import __version__
+
 logging.getLogger("flet").setLevel(logging.WARNING)
 logging.getLogger("flet_web").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-__version__ = "2.0.0-beta5"
-
-def start_GUI(settings, hardware, toml, localization, flink, nfc, errors, background_tasks):
-    ft.app(target=UI(settings, hardware, toml, localization, flink, nfc, errors, background_tasks))
+def start_GUI(settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks):
+    ft.app(target=UI(settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks))
 
 class DigitButton(ft.ElevatedButton):
     def __init__(self, text, button_clicked, ui):
@@ -81,11 +83,10 @@ class NumberPad(ft.Container):
 
 
 class UI():
-    def __init__(self, settings, hardware, toml, localization, flink, nfc, errors, background_tasks):
+    def __init__(self, settings, toml, localization, flink, nfc, errors, errors_lock, background_tasks):
         self.__page = None
         self.main_color = settings["UI_color"]
         self.settings = settings
-        self.hardware = hardware
         self.localization = localization
         self.language = settings["UI_language"]
         self.text = localization[self.language]
@@ -93,6 +94,7 @@ class UI():
         self.flink = flink
         self.nfc = nfc
         self.errors = errors
+        self.errors_lock = errors_lock
         self.background_tasks = background_tasks
         
     def __call__(self, flet_page: ft.Page):
@@ -167,7 +169,7 @@ class UI():
                 ft.Card(content=ft.Container(content=ft.Text(value=self.text["service_menu"], color=self.main_color, text_align=ft.TextAlign.LEFT, size=35, style=ft.TextStyle(weight=ft.FontWeight.BOLD)), padding=10),color=ft.Colors.WHITE, margin=0),
                 ft.Row([
                     ft.ElevatedButton(text=self.text["close_app"],on_click=self.btn_dec(lambda _: subprocess.call("./stop.sh")), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
-                    ft.ElevatedButton(text=self.text["restart_app"], on_click=self.btn_dec(lambda _: subprocess.call("systemctl --user restart schluesselkasten.service")), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
+                    ft.ElevatedButton(text=self.text["restart_app"], on_click=self.btn_dec(lambda _: subprocess.call(["systemctl", "--user", "restart", "schluesselkasten.service"])), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
                 ]),
                 ft.Row([
                     ft.ElevatedButton(text=self.text["open_all"],on_click=self.btn_dec(self.open_all_clicked), color = ft.Colors.WHITE, bgcolor = self.main_color, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=30), padding=15, text_style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD)), expand=True),
@@ -215,8 +217,8 @@ class UI():
                 ft.Text(value=f"Serial number: {self.settings['SN']}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
                 ft.Text(value=f"Software version: {__version__}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
                 ft.Text(value=f"Hardware revision: {self.settings['HW_revision']}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
-                ft.Text(value=f"Hardware platform: {self.hardware.get_cpu_model()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
-                ft.Text(value=f"Hardware serial: {self.hardware.get_cpu_serial()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                ft.Text(value=f"Hardware platform: {hardware.get_cpu_model()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
+                ft.Text(value=f"Hardware serial: {hardware.get_cpu_serial()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
                 ft.Text(value=f"Python: {platform.python_version()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),
                 ft.Text(value=f"OS: {platform.platform()}", color=self.main_color, text_align=ft.TextAlign.LEFT, size=16, style=ft.TextStyle(weight=ft.FontWeight.BOLD)),                                 
                 ft.Text(value=f"Compartments: {self.settings['SMALL_COMPARTMENTS']} small, {self.settings['LARGE_COMPARTMENTS']} large.", color=self.main_color, text_align=ft.TextAlign.LEFT, 
@@ -326,7 +328,7 @@ class UI():
             comp, status = self.flink.check_code(code)
             if status == "valid":
                 self.open_compartment(comp, "borrow")
-                logger.info(f"Code '{code}' was entered, valid for compartment {comp}, content status: {self.hardware.compartments[comp].content_status}, door status: {self.hardware.compartments[comp].door_status}.")
+                logger.info(f"Code '{code}' was entered, valid for compartment {comp}, content status: {hardware.compartments[comp].content_status}, door status: {hardware.compartments[comp].door_status}.")
             else:
                 if status=="invalid":
                     title = self.text["code_invalid_title"]
@@ -367,7 +369,7 @@ class UI():
             if self.service_mode.value == "open":
                 success = self.open_compartment(comp, "service")
                 if success:
-                    logger.info(f"Compartment {comp} was opened from service mode, content status: {self.hardware.compartments[comp].content_status}, door status: {self.hardware.compartments[comp].door_status}.")
+                    logger.info(f"Compartment {comp} was opened from service mode, content status: {hardware.compartments[comp].content_status}, door status: {hardware.compartments[comp].door_status}.")
             elif self.service_mode.value == "program": 
                 # nfc_personalize, write dict, save to toml
                 if self.compartment == "0000":
@@ -420,7 +422,7 @@ class UI():
             self.compartment = self.compartment + data
             
     def open_compartment(self, compartment, reason):
-        if compartment not in self.hardware.compartments:
+        if compartment not in hardware.compartments:
             dlg = ft.AlertDialog(
                 modal=False,
                 title=ft.Text(self.text["invalid_compartment_title"]),
@@ -437,9 +439,9 @@ class UI():
             content=ft.Text(self.text["open_compartment_text"].format(compartment=compartment),  style=ft.TextStyle(size=24)),
             on_dismiss=None)
         self.page.open(dlg)
-        self.hardware.compartments[compartment].set_LEDs("white")
+        hardware.compartments[compartment].set_LEDs("white")
         self.beep_success()
-        success = self.hardware.compartments[compartment].open()
+        success = hardware.compartments[compartment].open()
         time.sleep(1)
         if success:
            announcement = self.text["compartment_opened_announcement"].format(compartment=compartment)
@@ -479,38 +481,38 @@ class UI():
         close_time = time.time() + 20
         was_closed = False
         while time.time() < close_time and dlg_modal.open:
-            if not self.hardware.compartments[compartment].is_open() and not was_closed:
+            if not hardware.compartments[compartment].is_open() and not was_closed:
                 self.beep_success()
                 was_closed = True
             time.sleep(0.1)
         repetitions = 0
-        while self.hardware.compartments[compartment].is_open() and repetitions < 3:
+        while hardware.compartments[compartment].is_open() and repetitions < 3:
             # blink red LEDs
-            self.hardware.compartments[compartment].set_LEDs((255,0,0))
+            hardware.compartments[compartment].set_LEDs((255,0,0))
             self.beep_warning()
-            self.hardware.compartments[compartment].set_LEDs("off")
+            hardware.compartments[compartment].set_LEDs("off")
             time.sleep(1)
             repetitions += 1      
-        if self.hardware.compartments[compartment].is_open():
+        if hardware.compartments[compartment].is_open():
             logger.warning(f"Compartment {compartment} was not closed by user.")
         if dlg_modal.open:
             self.answer_yes(dlg_modal, self.welcome, reason, compartment)
-        self.hardware.compartments[compartment].set_LEDs("off")
+        hardware.compartments[compartment].set_LEDs("off")
         return True
 
     def answer_no(self, dlg_modal, destination, reason, compartment):
         self.close_modal(dlg_modal, destination)
         if reason == "borrow": # not taken
-            self.hardware.compartments[compartment].content_status = "present"
+            hardware.compartments[compartment].content_status = "present"
         elif reason == "return": # not returned
-            self.hardware.compartments[compartment].content_status = "empty"
+            hardware.compartments[compartment].content_status = "empty"
 
     def answer_yes(self, dlg_modal, destination, reason, compartment):
         self.close_modal(dlg_modal, destination)
         if reason == "borrow": # taken
-            self.hardware.compartments[compartment].content_status = "empty"
+            hardware.compartments[compartment].content_status = "empty"
         elif reason == "return": # returned
-            self.hardware.compartments[compartment].content_status = "present"
+            hardware.compartments[compartment].content_status = "present"
 
     def close_modal(self, dialog, destination):
         self.page.close(dialog)
@@ -518,49 +520,53 @@ class UI():
         
     def open_all_clicked(self, e):
         logger.info("All compartments opened from service mode.")
-        self.hardware.open_all()
+        hardware.open_all()
         
     def mounting_clicked(self, e):
         logger.info("Mounting compartments opened from service mode.")
-        self.hardware.open_mounting()
+        hardware.open_mounting()
         
     def reconfigure_appbar(self):
-        if len(self.errors) > 0 and self.page.appbar.title == self.titletext:
+        with self.errors_lock:
+            has_errors = len(self.errors) > 0
+            flink_err   = "flink"       in self.errors
+            ping_err    = "ping"        in self.errors
+            power_err   = "power"       in self.errors
+            battery_err = "battery"     in self.errors
+            misc_err    = bool({i for i in {"NFC", "compartments", "lux", "MQTT", "rpi"} if i in self.errors})
+        if has_errors and self.page.appbar.title == self.titletext:
             self.page.appbar.title = self.info_bar
-            self.info_bar_row.controls = self.info_bar_row.controls[0:1] # clear symbols
-            if "flink" in self.errors:
-                self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.CLOUD_OFF, color=ft.Colors.WHITE)) 
-            if "ping" in self.errors:
+            self.info_bar_row.controls = self.info_bar_row.controls[0:1]
+            if flink_err:
+                self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.CLOUD_OFF, color=ft.Colors.WHITE))
+            if ping_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.WIFI_OFF, color=ft.Colors.WHITE))
-            if "power" in self.errors:
+            if power_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.POWER_OFF, color=ft.Colors.WHITE))
-            if "battery" in self.errors:
+            if battery_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.BATTERY_0_BAR, color=ft.Colors.WHITE))
-            if [i for i in {"NFC", "compartments", "lux", "MQTT", "rpi"} if i in self.errors]:
+            if misc_err:
                 self.info_bar_row.controls.append(ft.Icon(name=ft.Icons.ENGINEERING, color=ft.Colors.WHITE))
         else:
             self.page.appbar.title = self.titletext
         self.page.update()
         
     def update_info(self):
-        self.open_comps_text.value = f"Open compartments: {self.hardware.check_all()}"
-        self.network_text.value = f"Network: {self.hardware.get_ESSID()}, Signal: {self.hardware.get_RSSI()}"
-        self.temp_text.value = f"CPU temperature: {self.hardware.get_temp()} °C"
-        self.memory_text.value = f"Memory available: {self.hardware.get_memory_info()}"
-        self.uptime_text.value = f"Uptime: {self.hardware.uptime()}"
-        self.error_text.value = f"Errors: {self.errors}"
+        self.open_comps_text.value = f"Open compartments: {hardware.check_all()}"
+        self.network_text.value = f"Network: {hardware.get_ESSID()}, Signal: {hardware.get_RSSI()}"
+        self.temp_text.value = f"CPU temperature: {hardware.get_temp()} °C"
+        self.memory_text.value = f"Memory available: {hardware.get_memory_info()}"
+        self.uptime_text.value = f"Uptime: {hardware.uptime()}"
+        with self.errors_lock:
+            self.error_text.value = f"Errors: {dict(self.errors)}"
         # Add new lines for backlight and brightness
-        if self.hardware.light_sensor is not None:
-            self.brightness_text.value = f"Ambient brightness: {self.hardware.light_sensor.lux:.2f} lux, Display brightness: {self.hardware.backlight._duty_cycle}%"
+        if hardware.light_sensor is not None:
+            self.brightness_text.value = f"Ambient brightness: {hardware.light_sensor.lux:.2f} lux, Display brightness: {hardware.backlight._duty_cycle}%"
         else:
-            self.brightness_text.value = f"Ambient brightness: N/A, Display brightness: {self.hardware.backlight._duty_cycle}%"
-        if self.hardware.battery_monitor is not None:
-            try:
-                self.battery_text.value = f"Input: {self.hardware.battery_monitor.VBUS:.0f} mV, {self.hardware.battery_monitor.IBUS:.0f} mA"
-                self.power_text.value = f"Battery: {self.hardware.battery_monitor.VBAT:.0f} mV, {self.hardware.battery_monitor.IBAT:.0f} mA"
-            except Exception as e:
-                logger.error(f"Error reading battery monitor data: {e}")
-
+            self.brightness_text.value = f"Ambient brightness: N/A, Display brightness: {hardware.backlight._duty_cycle}%"
+        if hardware.battery_monitor is not None:
+            self.battery_text.value = f"Input: {hardware.battery_monitor.VBUS:.0f} mV, {hardware.battery_monitor.IBUS:.0f} mA"
+            self.power_text.value = f"Battery: {hardware.battery_monitor.VBAT:.0f} mV, {hardware.battery_monitor.IBAT:.0f} mA"
 
     def change_language(self):
         # Get list of available languages
@@ -597,20 +603,20 @@ class UI():
         
     def beep_success(self):
         if self.settings["UI_sound"]:
-            self.hardware.beep(duration=0.06, frequency=4000)
+            hardware.beep(duration=0.06, frequency=4000)
             time.sleep(0.04)
-            self.hardware.beep(duration=0.06, frequency=4000)
+            hardware.beep(duration=0.06, frequency=4000)
 
     def beep_warning(self):
         if self.settings["UI_sound"]:
-            self.hardware.beep(duration=0.75, frequency=2000)
+            hardware.beep(duration=0.75, frequency=2500)
         
     def btn_dec(self, func):
         def wrapper(*args, **kwargs):
             self.reset_inactivity_timer()
             try:
-                if self.hardware.haptic is not None and self.settings["UI_haptic"]:
-                    self.hardware.trigger_haptic()
+                if hardware.haptic is not None and self.settings["UI_haptic"]:
+                    hardware.trigger_haptic()
             except Exception:
                 pass
             return func(*args, **kwargs)
@@ -627,16 +633,14 @@ class UI():
         self.page.update()
 
     def toggle_charging(self, e):
-        self.settings["charging"] = e.control.value
-        self.toml.write(self.settings)
-        self.hardware.battery_monitor.enable_charging(e.control.value)
+        hardware.battery_monitor.enable_charging(e.control.value)
         self.page.update()
 
     def brightness_slider_changed(self, e):
         adjustment = e.control.value
         self.settings["brightness_adjustment"] = adjustment
-        if self.hardware.light_sensor is not None:
-            self.hardware.backlight.change_duty_cycle(self.settings["brightness_adjustment"]*100*self.hardware.light_sensor.lux/(self.settings["max_brightness"]))
+        if hardware.light_sensor is not None:
+            hardware.backlight.change_duty_cycle(self.settings["brightness_adjustment"]*100*hardware.light_sensor.lux/(self.settings["max_brightness"]))
         else:
-            self.hardware.backlight.change_duty_cycle(self.settings["brightness_adjustment"]*80)
+            hardware.backlight.change_duty_cycle(self.settings["brightness_adjustment"]*80)
         self.toml.write(self.settings)

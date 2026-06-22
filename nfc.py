@@ -9,7 +9,7 @@ from desfire import DESFire, DESFireKey, diversify_key, get_list, to_hex_string,
 from desfire.enums import DESFireCommunicationMode, DESFireFileType, DESFireKeySettings, DESFireKeyType
 from desfire.schemas import FilePermissions, FileSettings, KeySettings
 
-__version__ = "2.0.0-beta5"
+from version import __version__
 
 logging.getLogger("desfire").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -24,6 +24,12 @@ class NFC():
         self.MIFARE_APP_ID = get_list(bytearray(settings["app_id"], 'utf-8'))  # ZEK = 5a454b = 90, 69, 75
         self.MIFARE_SYS_ID = settings["sys_id"]  # 3 bytes, can essentially be anything
         self.MIFARE_ENCRYPTED_FILE_ID = 0x1
+        # Old known master keys for format() — stored in secrets.toml under NFC.old_keys.
+        # Each entry is a UTF-8 string that will be converted to a byte list the same way
+        # as the current master key.
+        self.old_keys = [
+            get_list(bytearray(k, 'utf-8')) for k in settings.get("old_keys", [])
+        ]
 
         self.aes_key_settings = KeySettings(
             settings=[
@@ -38,12 +44,12 @@ class NFC():
     def check(self):
         
         # Create physical device which can be used to detect a card
-        device = PN532UARTDevice(self.port, listen_timeout = 0.1, baudrate=115200, timeout=0.005)
+        device = PN532UARTDevice(self.port, baudrate=115200, timeout=0.01)
         
         # Wait for a card
         uid = None
 
-        uid = device.read_passive_target(timeout=0.9)
+        uid = device.wait_for_card(timeout=0.9)
 
         if not uid:
             logger.debug("No card detected.")
@@ -187,11 +193,8 @@ class NFC():
         uid = None
         i = 0
 
-        # known keys, current is last
-        keys = [
-            get_list(bytearray(b'ZE_MasterKey2025').hex()),
-            self.MIFARE_PICC_MASTER_KEY,
-            ]
+        # known keys (old keys first, current key last)
+        keys = self.old_keys + [self.MIFARE_PICC_MASTER_KEY]
 
 
         while not uid and i < self.attempts:

@@ -1,16 +1,18 @@
 from Adafruit_IO import MQTTClient
 import logging
-import sys
 
 import subprocess  # For executing a shell command
 import ping3
 
-__version__ = "2.0.0-beta4"
+import hardware_V2 as hardware
+
+from version import __version__
 
 logger = logging.getLogger(__name__)
 
-# Global hardware instance
-hardware = None
+# Command token required as the first word of every MQTT command payload.
+# Must match the MQTT_command_token value in secrets.toml.
+_command_token = None
 
 
 def ping():
@@ -32,12 +34,12 @@ def message(mqtt, feed_id, payload):
         
 def disconnected(mqtt):
     # Disconnected function will be called when the mqtt disconnects.
-    sys.exit(1)
+    # Do not exit — the background loop will attempt reconnection every 30 s.
+    logger.warning("MQTT broker disconnected.")
 
-def init_mqtt(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY, aio_feed_name, hardware_instance):
-    global mqtt, hardware
-    hardware = hardware_instance
-    
+def init_mqtt(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY, aio_feed_name, command_token):
+    global mqtt, _command_token
+    _command_token = command_token
     # Create an MQTT instance.
     mqtt = MQTTClient(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
     
@@ -65,33 +67,53 @@ def connect_mqtt():
 
 # process received command
 def process_mqtt_command(payload):
-    payload = payload.split(" ")
-    command = payload[0]
-    if command == "status" and len(payload) == 2:
-        comp = payload[1]
+    parts = payload.split()
+    # First word must be the shared command token for authentication.
+    if not parts or parts[0] != _command_token:
+        logger.warning("MQTT command rejected: missing or invalid token.")
+        return
+    # Shift past the token so existing command logic is unchanged.
+    parts = parts[1:]
+    if not parts:
+        return
+    command = parts[0]
+    if command == "status" and len(parts) == 2:
+        comp = parts[1]
         if comp == "all":
             logger.info(f"Open compartments: {hardware.check_all()}")
-        elif int(comp) > 0 and int(comp) <= len(hardware.compartments):
-            logger.info(f"Compartment {comp} status: door open: {hardware.compartments[comp].get_inputs()}, door status saved: {hardware.compartments[comp].door_status}, content status: {hardware.compartments[comp].content_status}.")
-    elif command == "open" and len(payload) == 2:
-        comp = payload[1]
+        else:
+            try:
+                comp_int = int(comp)
+            except ValueError:
+                logger.warning(f"MQTT status command rejected: invalid compartment '{comp}'.")
+                return
+            if 0 < comp_int <= len(hardware.compartments):
+                logger.info(f"Compartment {comp} status: door open: {hardware.compartments[comp].is_open()}, door status saved: {hardware.compartments[comp].door_status}, content status: {hardware.compartments[comp].content_status}.")
+    elif command == "open" and len(parts) == 2:
+        comp = parts[1]
         if comp == "all":
             hardware.open_all()
-        elif int(comp) > 0 and int(comp) <= len(hardware.compartments):
-            hardware.compartments[comp].open()
+        else:
+            try:
+                comp_int = int(comp)
+            except ValueError:
+                logger.warning(f"MQTT open command rejected: invalid compartment '{comp}'.")
+                return
+            if 0 < comp_int <= len(hardware.compartments):
+                hardware.compartments[comp].open()
         logger.info(f"Compartment open sent from MQTT broker: {comp}")
-    elif command == "restart" and len(payload) == 2:
-        if payload[1] == "device":
-            subprocess.run("sudo reboot now", shell=True)
-        if payload[1] == "software":
-            subprocess.run("./start.sh")
-    #elif command == "service" and len(payload) == 1:    
+    elif command == "restart" and len(parts) == 2:
+        if parts[1] == "device":
+            subprocess.run(["sudo", "reboot", "now"])
+        if parts[1] == "software":
+            subprocess.run(["./start.sh"])
+    #elif command == "service" and len(parts) == 1:    
        #UI.page_reconfigure(UI.service)
-    #elif command == "tamper_alarm" and len(payload) == 2:
+    #elif command == "tamper_alarm" and len(parts) == 2:
         # global tamper_alarm
-        # if payload[1] == "off":
+        # if parts[1] == "off":
             # tamper_alarm = "off"
-        # elif payload[1] == "on":
+        # elif parts[1] == "on":
             # tamper_alarm = "on"
 
 class AIOLogHandler(logging.Handler):
