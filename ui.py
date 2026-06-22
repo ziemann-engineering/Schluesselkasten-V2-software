@@ -609,7 +609,7 @@ class UI():
 
     def beep_warning(self):
         if self.settings["UI_sound"]:
-            hardware.beep(duration=0.75, frequency=2500)
+            hardware.beep(duration=0.75, frequency=2000)
         
     def btn_dec(self, func):
         def wrapper(*args, **kwargs):
@@ -633,7 +633,9 @@ class UI():
         self.page.update()
 
     def toggle_charging(self, e):
+        self.settings["charging"] = e.control.value
         hardware.battery_monitor.enable_charging(e.control.value)
+        self.toml.write(self.settings)
         self.page.update()
 
     def brightness_slider_changed(self, e):

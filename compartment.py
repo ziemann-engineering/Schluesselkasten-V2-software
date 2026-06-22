@@ -67,7 +67,7 @@ class Compartment():
         for input in self.status_inputs:
             if not input.value: # count inputs which are low -> switch is pressed, door is closed (considered closed if one switch is pressed)
                 is_door_open = False
-        return is_door_open  # if sum > 0, door is closed
+        return is_door_open  # returns true only if all door switches are open/high
 
     def set_outputs(self, status):
         for output in self.lock_outputs:
