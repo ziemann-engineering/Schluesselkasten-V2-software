@@ -267,7 +267,7 @@ logger.info(f"Network: {hardware.get_ESSID()}, Signal: {hardware.get_RSSI()}")
 #
 
 if hardware.battery_monitor is not None:
-    logger.info(f"VBUS: {hardware.battery_monitor.VBUS:.0f} mV, {hardware.battery_monitor.VBAT:.0f} mV")
+    logger.info(f"VBUS: {hardware.battery_monitor.VBUS:.0f} mV, VBAT {hardware.battery_monitor.VBAT:.0f} mV")
 
 logger.info(f"{len(hardware.port_expanders)} compartment PCBs / rows detected.")
 if len(hardware.port_expanders)*5 < small_compartments:
