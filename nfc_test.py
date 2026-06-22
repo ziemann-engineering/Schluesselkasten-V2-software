@@ -1,11 +1,17 @@
 from nfc import NFC
 from tomlkit.toml_file import TOMLFile
+import sys
 
-toml = TOMLFile("settings.toml")
+import logging
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(asctime)s %(levelname)s: %(message)s")
+
+
+toml = TOMLFile("./assets/settings/settings.toml")
 settings = toml.read()
 
 try: 
-    nfc = NFC(settings["NFC"], "/dev/ttyAMA3")
+    nfc = NFC(settings["NFC"], "/dev/ttyAMA4")
+    print("NFC setup successful.")
 
 except Exception as e:
     nfc = None

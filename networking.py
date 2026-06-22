@@ -5,11 +5,12 @@ import sys
 import subprocess  # For executing a shell command
 import ping3
 
-import hardware_V2 as hardware
-
-__version__ = "2.0.0-beta2"
+__version__ = "2.0.0-beta4"
 
 logger = logging.getLogger(__name__)
+
+# Global hardware instance
+hardware = None
 
 
 def ping():
@@ -33,8 +34,10 @@ def disconnected(mqtt):
     # Disconnected function will be called when the mqtt disconnects.
     sys.exit(1)
 
-def init_mqtt(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY, aio_feed_name):
-    global mqtt
+def init_mqtt(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY, aio_feed_name, hardware_instance):
+    global mqtt, hardware
+    hardware = hardware_instance
+    
     # Create an MQTT instance.
     mqtt = MQTTClient(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
     

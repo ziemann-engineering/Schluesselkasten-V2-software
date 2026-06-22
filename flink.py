@@ -2,7 +2,7 @@ import time
 import logging
 import requests
 
-__version__ = "2.0.0-beta2"
+__version__ = "2.0.0-beta4"
 
 flink_timeout = 5
 logger = logging.getLogger(__name__)

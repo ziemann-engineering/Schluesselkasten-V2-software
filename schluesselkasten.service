@@ -1,0 +1,25 @@
+[Unit]
+Description=Schlüsselkasten V2 GUI service
+
+[Service]
+# Command to execute when the service is started
+ExecStart=/home/ze/Schluesselkasten-V2-software/start.sh
+
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+
+StandardOutput=append:/home/ze/Schluesselkasten-V2-software/schlüsselkasten.log
+StandardError=append:/home/ze/Schluesselkasten-V2-software/schlüsselkasten.log
+
+# this file should be placed/linked at ~/.config/systemd/user/
+# useful commands:
+# ln ./schluesselkasten.service ~/.config/systemd/user/schluesselkasten.service
+# systemctl --user daemon-reload
+# systemctl --user start schluesselkasten.service
+# systemctl --user restart schluesselkasten.service
+
+

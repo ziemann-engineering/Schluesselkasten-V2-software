@@ -8,7 +8,7 @@
 import time
 import digitalio
 
-__version__ = "2.0.0-beta2"
+__version__ = "2.0.0-beta4"
 
 maximum_on_time = 2 # set maximum lock on time
 check_time = 0.1 # time to sleep between door checks
@@ -53,6 +53,10 @@ class compartment():
                     self.LED_connector.set_led_color(LED, (0,0,0))
             else:
                 try:
+                    if len(color) == 3 and self.LED_connector.colors == "RGBW":
+                        color = color + (0,)
+                    if len(color) == 4 and self.LED_connector.colors == "RGB":
+                        color = color[:3]                            
                     self.LED_connector.set_led_color(LED, color)
                 except Exception:
                     pass

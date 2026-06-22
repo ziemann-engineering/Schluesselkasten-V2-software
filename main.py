@@ -2,18 +2,17 @@ import time
 import platform
 from tomlkit.toml_file import TOMLFile
 import logging
+import os
 
 import ui
-import hardware_V2 as hardware
+import hardware_V2
 #import hardware_mock as hardware
 import flink
 import networking
 from nfc import NFC
 
-# TODO: GUi watchdog: if no interaction for time x, go back to welcome page
-
 # version string
-__version__ = "2.0.0-beta3"
+__version__ = "2.0.0-beta5"
 
 # background tasks function
 def background_tasks(ui):
@@ -21,36 +20,31 @@ def background_tasks(ui):
     last_1s = 0 # fastest task, 1 or 2 times per second
     last_5s = 0
     last_30s = 0
-    last_5min = 0 # slowest task, roughly every 5 minutes
+    next_5min = 0 # slowest task, every 5 minutes, every 30s in case of error
+
+    critical_battery_seconds = 0  # counter for critical battery shutdown
     
+    # check tasks once per second
     while True:
         while last_1s + 1 > time.time():
             time.sleep(0.1)
         last_1s = time.time()
         
-        ### runs roughly every 5 minutes ###
-        if last_5min + 300 < time.time():  
+        ### runs roughly every 5 minutes,  ###
+        if next_5min < time.time():  
             # send keepalive message
             status_code = flink.put_status(time.monotonic(), SN, __version__, small_compartments, large_compartments)
             if status_code == 200:
-                if last_5min == 0 or "flink" in errors:
+                if next_5min == 0 or "flink" in errors:
                     logger.info(f"Response from Flink: {status_code}.")
                 if "flink" in errors:
                     del errors["flink"]
+                next_5min = time.time() + 300
             else:
                 logger.warning(f"Response from Flink: {status_code}.")
-                errors["flink"] = f"Connection to flink failed: {status_code}."
+                errors["flink"] = f"Connection to flink failed: {status_code}."   
+                next_5min = time.time() + 30  # try again in 30s if error
 
-            # check if MQTT is ok, reconnect if necessary
-            if networking.mqtt is None or not networking.mqtt.is_connected():
-                networking.init_mqtt(settings["ADAFRUIT_IO_USERNAME"], settings["ADAFRUIT_IO_KEY"], settings["ADAFRUIT_IO_FEED"])
-                if networking.mqtt is None or not networking.mqtt.is_connected(): # still not?
-                    errors["MQTT"] = "MQTT connection failed."
-            elif "MQTT" in errors:
-                del errors["MQTT"]
-            last_5min = time.time()
-            
-            
         ### runs roughly every 30 s ###
         if time.time() > last_30s + 30:
             # check for raspberry pi hardware messages
@@ -72,14 +66,15 @@ def background_tasks(ui):
             else:
                 logger.warning(f"Ping to google failed: {ping} ms.")
                 errors["ping"] = f"Ping to google failed: {ping} ms."
+
+            # check if MQTT is ok, reconnect if necessary
+            if networking.mqtt is None or not networking.mqtt.is_connected():
+                networking.init_mqtt(settings["ADAFRUIT_IO_USERNAME"], settings["ADAFRUIT_IO_KEY"], settings["ADAFRUIT_IO_FEED"], hardware)
+                if networking.mqtt is None or not networking.mqtt.is_connected(): # still not?
+                    errors["MQTT"] = "MQTT connection failed."
+            elif "MQTT" in errors:
+                del errors["MQTT"]
             
-            # check battery status
-            if hardware.battery_monitor is not None:
-                if hardware.battery_monitor.cell_voltage < 3.5:  # log if low battery
-                    logger.warning(f"Battery low: {hardware.battery_monitor.cell_voltage:.2f}V, {hardware.battery_monitor.cell_percent:.1f} %")
-                    ui.errors["battery"] = f"Battery low: {hardware.battery_monitor.cell_voltage:.2f}V, {hardware.battery_monitor.cell_percent:.1f} %"
-                elif "battery" in errors:
-                    del errors["battery"]
             last_30s = time.time()
         
         ### runs roughly every 5 s ### 
@@ -87,13 +82,43 @@ def background_tasks(ui):
         if time.time() > last_5s + 5:
             ui.reconfigure_appbar()
             last_5s = time.time()
+
+            # check supply status
+            if hardware.battery_monitor is not None:
+                try:
+                    VBUS = hardware.battery_monitor.VBUS
+                    VBAT = hardware.battery_monitor.VBAT
+                    if VBUS < 4000 and "power" not in errors:
+                        logger.warning(f"Power supply disconnected, VBUS: {VBUS} mV.")
+                        errors["power"] = f"Power supply disconnected, VBUS: {VBUS} mV."
+                    if VBUS > 5000:
+                        if "power" in errors:
+                            del errors["power"]
+                    if VBAT < 3500 and "battery" not in errors and hardware.battery_present:
+                        logger.warning(f"Battery low: {VBAT} mV.")
+                        errors["battery"] = f"Battery low: {VBAT} mV."
+                    if VBAT > 3700:
+                        if "battery" in errors:
+                            del errors["battery"] 
+                    if VBAT < 3000 and VBUS < 4000:
+                        critical_battery_seconds += 1
+                        if critical_battery_seconds >= 5: # 5 consecutive low readings
+                            logger.error(f"Battery critically low: {VBAT} mV.")
+                            logger.error("Shutting down, apply power to restart.")
+                            time.sleep(1)
+                            hardware.battery_monitor.batfet_control("shipmode")
+                    else:
+                        critical_battery_seconds = 0
+                except Exception as e:
+                    logger.error(f"Error reading battery monitor data: {e}")
         
         ### runs roughly every second ###
         # backlight control
         if hardware.light_sensor is not None:
             try:
+                # calculate new duty cycle
                 current_DC = hardware.backlight._duty_cycle
-                error = current_DC - 100*hardware.light_sensor.lux/settings["max_brightness"] # positive - display too bright
+                error = current_DC - settings["brightness_adjustment"]*100*hardware.light_sensor.lux/(settings["max_brightness"]) # positive - display too bright
                 if abs(error) < 3: 
                     pass # do nothing if less than 3% off
                 elif error > 0:
@@ -112,8 +137,8 @@ def background_tasks(ui):
             except Exception as e:
                 logger.error(f"Error getting ambient brightness: {e}")
                 ui.errors["lux"] = f"Error getting ambient brightness: {e}"
-        else: # no sensor found
-            hardware.backlight.change_duty_cycle(80)
+        else: # no sensor found, do 80% tied to brightness adjustment setting
+            hardware.backlight.change_duty_cycle(80 * settings["brightness_adjustment"])
 
         # info page update (if open)
         if ui.info in ui.page:
@@ -139,6 +164,17 @@ def background_tasks(ui):
             except Exception as e:
                 logger.warning(f"Error checking NFC tag: {e}")
                 ui.errors["NFC"] = f"Error checking NFC tag: {e}"
+
+        #check for on-hat button press to open settings
+        if hardware.button is not None and not hardware.button.value:
+            ui.page_reconfigure(ui.service)
+            ui.beep_success()
+
+                
+
+        # check accelerometer?
+
+        # check for lock status changes?
           
                        
 #
@@ -159,9 +195,18 @@ aio_key = settings["ADAFRUIT_IO_KEY"]
 aio_feed_name = settings["ADAFRUIT_IO_FEED"]
 
 localization = {}
-localization["en"] = TOMLFile("assets/settings/lang_en.toml").read()
-localization["de"] = TOMLFile("assets/settings/lang_de.toml").read()
+lang_path = "assets/settings/"
+lang_files = [f for f in os.listdir(lang_path) if f.startswith("lang_") and f.endswith(".toml")]
 
+for lang_file in lang_files:
+    # Extract language code from filename (e.g., "lang_en.toml" -> "en")
+    lang_code = lang_file[5:-5]  
+    try:
+        localization[lang_code] = TOMLFile(os.path.join(lang_path, lang_file)).read()
+        print(f"Loaded language file: {lang_file}")
+    except Exception as e:
+        print(f"Error loading language file {lang_file}: {e}")
+        
 #
 # LOGGING SETUP
 #
@@ -199,11 +244,20 @@ logging.basicConfig(filename='schlüsselkasten.log',
 logger.addHandler(flink.FlinkLogHandler(logging.ERROR, ID, settings["FLINK_URL"], settings["FLINK_API_KEY"]))
 #logger.info("Logging to Flink started.")
 
-networking.init_mqtt(settings["ADAFRUIT_IO_USERNAME"], settings["ADAFRUIT_IO_KEY"], settings["ADAFRUIT_IO_FEED"])
+#
+# INIT HARDWARE
+#
+hardware = hardware_V2.Hardware(settings)
+
+# finish MQTT setup with hardware instance, and setup flink
+
+networking.init_mqtt(settings["ADAFRUIT_IO_USERNAME"], settings["ADAFRUIT_IO_KEY"], settings["ADAFRUIT_IO_FEED"], hardware)
 logger.addHandler(networking.AIOLogHandler(logging.INFO))
 #logger.info("Logging to MQTT broker started.")
 
 flink = flink.Flink(ID, settings["FLINK_URL"], settings["FLINK_API_KEY"])
+
+
 
 #
 # INFO MESSAGES
@@ -219,13 +273,9 @@ logger.info(f"Network: {hardware.get_ESSID()}, Signal: {hardware.get_RSSI()}")
 
 #logger.info(f"Reset reason: {str(microcontroller.cpu.reset_reason).split('.')[2]}, run reason: {str(supervisor.runtime.run_reason).split('.')[2]}")
 
-
-#
-# HARDWARE SETUP
-#
-
 if hardware.battery_monitor is not None:
-    logger.info(f"Battery status: {hardware.battery_monitor.cell_voltage:.2f}V, {hardware.battery_monitor.cell_percent:.1f} %")
+    logger.info(f"VBUS: {hardware.battery_monitor.VBUS:.0f} mV, VBAT: {hardware.battery_monitor.VBAT:.0f} mV")
+    logger.info(f"Battery detected: {hardware.battery_present}, charging enabled: {settings['charging']}")
 
 logger.info(f"{len(hardware.port_expanders)} compartment PCBs / rows detected.")
 if len(hardware.port_expanders)*5 < small_compartments:
@@ -250,4 +300,4 @@ if len(open_comps) != 0:
 # Start GUI
 #
 
-ui.start_GUI(settings, toml, localization, flink, nfc, errors, background_tasks)
+ui.start_GUI(settings, hardware, toml, localization, flink, nfc, errors, background_tasks)

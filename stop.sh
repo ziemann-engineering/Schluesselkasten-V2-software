@@ -7,11 +7,23 @@ then
     #/usr/bin/kanshi &
     /usr/bin/lxsession-xdg-autostart &
     squeekboard &
-    pkill flet
-    pkill python3
-else
-    pkill flet
-    pkill python3
 fi
+
+# Check if service is running
+if systemctl is-active --user --quiet schluesselkasten.service; 
+then
+    echo "Service $SERVICE_NAME is running. Stopping it..."
+    systemctl --user stop schluesselkasten.service
+else
+    echo "Service $SERVICE_NAME is not running."
+    
+    pkill flet
+    pkill python
+    pkill python
+fi
+
+
+
+
 
 
