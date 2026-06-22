@@ -69,7 +69,7 @@ def connect_mqtt():
 def process_mqtt_command(payload):
     parts = payload.split()
     # First word must be the shared command token for authentication.
-    if not parts or parts[0] != _command_token:
+    if _command_token is None or not parts or parts[0] != _command_token:
         logger.warning("MQTT command rejected: missing or invalid token.")
         return
     # Shift past the token so existing command logic is unchanged.

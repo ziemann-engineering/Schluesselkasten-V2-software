@@ -4,12 +4,9 @@ Unit tests for bq25628.py.
 A ``MockI2CDevice`` replaces ``adafruit_bus_device.i2c_device.I2CDevice`` so
 that register reads and writes can be inspected without real I2C hardware.
 
-Note on getter tests
---------------------
-Several getter methods (e.g. ``get_charge_current``) contain a bug where they
-try to right-shift a ``bytearray`` directly (``val >> n``), which raises a
-``TypeError``.  Those getters are explicitly skipped here; the tests focus on
-the setter encoding logic and on error-raising helpers.
+Current scope
+-------------
+The suite focuses primarily on setter encoding logic and helper behavior.
 """
 
 import sys

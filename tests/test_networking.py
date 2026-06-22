@@ -130,13 +130,4 @@ def test_restart_software_calls_subprocess(monkeypatch):
     "open abc",      # non-numeric compartment index
 ])
 def test_malformed_commands_do_not_raise(payload):
-    try:
-        networking.process_mqtt_command(payload)
-    except (ValueError, IndexError):
-        # open/status with non-numeric comp will raise ValueError/IndexError
-        # inside the current implementation; document that here rather than
-        # masking the crash so that fixing it is explicit.
-        pytest.xfail(
-            f"process_mqtt_command({payload!r}) raised an exception; "
-            "input validation should be added to the production code."
-        )
+    networking.process_mqtt_command(payload)
