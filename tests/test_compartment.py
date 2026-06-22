@@ -33,7 +33,7 @@ def make_compartment(input_value=False, output_value=False):
 
     in_pin = MockPin(initial_value=input_value)
     out_pin = MockPin(initial_value=output_value)
-    return comp_mod.compartment(in_pin, out_pin), in_pin, out_pin
+    return comp_mod.Compartment(in_pin, out_pin), in_pin, out_pin
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def test_is_open_multiple_inputs_one_low():
     in1 = MockPin(initial_value=True)
     in2 = MockPin(initial_value=False)
     out = MockPin()
-    c = comp_mod.compartment(in1, out)
+    c = comp_mod.Compartment(in1, out)
     c.add_input(in2)
 
     assert c.is_open() is False
@@ -92,7 +92,7 @@ def test_is_open_multiple_inputs_both_high():
     in1 = MockPin(initial_value=True)
     in2 = MockPin(initial_value=True)
     out = MockPin()
-    c = comp_mod.compartment(in1, out)
+    c = comp_mod.Compartment(in1, out)
     c.add_input(in2)
 
     assert c.is_open() is True
@@ -121,7 +121,7 @@ def test_set_outputs_multiple_outputs():
     out1 = MockPin()
     out2 = MockPin()
     in_pin = MockPin()
-    c = comp_mod.compartment(in_pin, out1)
+    c = comp_mod.Compartment(in_pin, out1)
     c.add_output(out2)
 
     c.set_outputs(True)
