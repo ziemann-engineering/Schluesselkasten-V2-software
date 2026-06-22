@@ -18,22 +18,28 @@ The Schlüsselkasten is a smart key cabinet that manages access to multiple comp
 - Battery monitoring and charge management (BQ25628)
 - LED strip control per compartment (RGB/RGBW via SPI)
 - Remote logging via Flink REST API and Adafruit IO MQTT
+- Hardware watchdog to recover from complete hangs (requires `dtparam=watchdog=on` in `/boot/config.txt`)
+- Rotating log file (1 MB × 5 backups) to prevent SD card exhaustion
 - Systemd user service for automatic start-up
 
 ## Hardware
 
-The target hardware is a **Raspberry Pi 4** with a custom Ziemann Engineering hat (HW revision 2.1). The software uses the `pi5neo` library for SPI-based LED control, which was originally written for the Raspberry Pi 5 but also runs on the Raspberry Pi 4.
+The target hardware is a **Raspberry Pi 4** with a custom Ziemann Engineering hat. Two hat revisions are supported and selected automatically via `HW_revision` in `settings.toml`:
 
-Several I2C buses are used for on-hat peripherals and may be specific to the Raspberry Pi 4:
+| Revision | I2C sys | I2C ext1 | I2C ext2 | Haptic pin | NFC UART |
+|----------|---------|----------|----------|------------|----------|
+| 2.0      | I2C-4   | I2C-1    | I2C-5    | GPIO 23    | ttyAMA3  |
+| 2.1      | I2C-1   | I2C-5    | I2C-6    | GPIO 17    | ttyAMA4  |
 
-| Bus | Purpose |
-|-----|---------|
-| I2C-0 | EEPROM |
-| I2C-1 | System devices (accelerometer, light sensor, haptic driver, battery monitor) |
-| I2C-5 | Compartment PCB connector 1 (MCP23017 port expanders) |
-| I2C-6 | Compartment PCB connector 2 (MCP23017 port expanders) |
+The software uses the `pi5neo` library for SPI-based LED control, which was originally written for the Raspberry Pi 5 but also runs on the Raspberry Pi 4.
 
-SPI buses are used for the LED strips (`/dev/spidev0.0` and `/dev/spidev1.0`). UART4 (`/dev/ttyAMA4`) is used for the NFC reader.
+| Bus / Interface | Purpose |
+|-----------------|---------|
+| I2C sys         | System devices: accelerometer (LIS3DH), light sensor (VEML7700), haptic driver (DRV2605), battery monitor (BQ25628) |
+| I2C ext1/ext2   | Compartment PCBs — MCP23017 port expanders (up to 8 per bus) |
+| `/dev/spidev0.0` | LED strip, compartment LEDs (RGB) |
+| `/dev/spidev1.0` | LED strip, large compartment LEDs (RGBW) |
+| UART (see table) | NFC reader (PN532) |
 
 ## Software Requirements
 
@@ -43,26 +49,7 @@ Raspberry Pi OS **Bookworm** (64-bit). Some features may be Bookworm-specific. T
 
 ### Python Dependencies
 
-Key libraries (see `requirements.txt` for the full list frozen from Pi OS Bookworm):
-
-- `adafruit-circuitpython-mcp230xx` — MCP23017 port expanders
-- `adafruit-circuitpython-lis3dh` — accelerometer
-- `adafruit-circuitpython-veml7700` — ambient light sensor
-- `adafruit-circuitpython-drv2605` — haptic driver
-- `adafruit-extended-bus` — extended I2C bus support
-- `pi5neo` — SPI NeoPixel/LED strip control
-- `rpi-hardware-pwm` — hardware PWM for backlight and buzzer
-- `rpi-lgpio` — GPIO access
-- `smbus2` — I2C/SMBus communication
-- `requests` — Flink REST API communication
-- `Adafruit-IO` — MQTT client for Adafruit IO
-- `ping3` — network connectivity check
-- `python-dotenv` / `tomlkit` — configuration file handling
-- `desfire` — MIFARE DESFire NFC card library
-
-### Virtual Environment
-
-It is recommended to set up a Python virtual environment:
+`requirements.txt` lists the curated set of project dependencies. Install them into a virtual environment:
 
 ```bash
 python -m venv ~/SKV2-env
@@ -70,27 +57,78 @@ source ~/SKV2-env/bin/activate
 pip install -r requirements.txt
 ```
 
+Key libraries:
+
+- `flet` — GUI framework
+- `tomlkit` — TOML configuration file handling
+- `adafruit-blinka` — CircuitPython hardware abstraction layer (provides `board`, `digitalio`, etc.)
+- `adafruit-circuitpython-mcp230xx` — MCP23017 port expanders
+- `adafruit-circuitpython-lis3dh` — accelerometer
+- `adafruit-circuitpython-veml7700` — ambient light sensor
+- `adafruit-circuitpython-drv2605` — haptic driver
+- `pi5neo` — SPI NeoPixel/LED strip control
+- `rpi-hardware-pwm` — hardware PWM for backlight and buzzer
+- `adafruit-io` — MQTT client for Adafruit IO
+- `ping3` — network connectivity check
+- `requests` — Flink REST API communication
+- `desfire` — MIFARE DESFire NFC card library
+
+### Test Dependencies
+
+`requirements-dev.txt` lists additional packages needed to run the automated test suite locally:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
 ## Configuration
 
-Configuration is stored in `assets/settings/settings.toml` (excluded from version control via `.gitignore`). A template for this file is **TODO**.
+Settings are split across two TOML files in `assets/settings/`:
 
-Required settings include:
+### `settings.toml`
 
-- `ID` — device identifier used in Flink API calls
-- `SN` — device serial number
-- `HW_revision` — hardware revision string
-- `SMALL_COMPARTMENTS` — number of standard compartments
-- `LARGE_COMPARTMENTS` — number of large compartments
-- `FLINK_URL` — base URL of the Flink instance (e.g. `https://your-flink-instance.flink.coop`)
-- `FLINK_API_KEY` — API key for Flink authentication
-- `ADAFRUIT_IO_USERNAME` — Adafruit IO username for MQTT logging
-- `ADAFRUIT_IO_KEY` — Adafruit IO API key
-- `ADAFRUIT_IO_FEED` — Adafruit IO feed name
-- `NFC` — NFC settings (master key, app ID, system ID)
-- `NFC-tags` — mapping of NFC tag UIDs to compartment numbers for tag-based access (note: key name uses a hyphen as required by the TOML parser)
-- `brightness_adjustment`, `max_brightness`, `min_backlight` — display backlight tuning
+Non-sensitive device configuration. **No template is provided yet (TODO).**
+
+| Key | Description |
+|-----|-------------|
+| `ID` | Device identifier used in Flink API calls |
+| `SN` | Device serial number |
+| `HW_revision` | Hardware revision string — `"2.0"` or `"2.1"` |
+| `SMALL_COMPARTMENTS` | Number of standard compartments |
+| `LARGE_COMPARTMENTS` | Number of large compartments |
+| `NFC-tags` | Map of NFC tag UIDs → compartment numbers (key name uses a hyphen as required by TOML) |
+| `brightness_adjustment` | Backlight tuning multiplier |
+| `max_brightness` | Lux value at which backlight reaches 100 % |
+| `min_backlight` | Minimum backlight duty cycle (%) |
+| `UI_color` | Accent colour for the UI |
+| `UI_language` | UI language code (e.g. `"en"`, `"de"`) |
+| `UI_sound` | Enable/disable sound feedback |
+| `UI_haptic` | Enable/disable haptic feedback |
 
 Localisation strings are loaded from `assets/settings/lang_<code>.toml` files (e.g. `lang_en.toml`, `lang_de.toml`).
+
+### `secrets.toml`
+
+Sensitive credentials — **excluded from version control**. Copy `assets/settings/secrets.toml.example` and fill in real values:
+
+```bash
+cp assets/settings/secrets.toml.example assets/settings/secrets.toml
+chmod 600 assets/settings/secrets.toml
+```
+
+| Key | Description |
+|-----|-------------|
+| `ADAFRUIT_IO_USERNAME` | Adafruit IO username for MQTT logging |
+| `ADAFRUIT_IO_KEY` | Adafruit IO API key |
+| `ADAFRUIT_IO_FEED` | Adafruit IO feed name |
+| `MQTT_command_token` | Shared token that must prefix every MQTT command payload (e.g. `"ZENG open 3"`) |
+| `FLINK_URL` | Base URL of the Flink instance |
+| `FLINK_API_KEY` | API key for Flink authentication |
+| `[NFC] masterkey` | Current 16-byte DESFire master key (UTF-8 string) |
+| `[NFC] app_id` | 3-byte DESFire application ID string |
+| `[NFC] sys_id` | 3-byte system ID string |
+| `[NFC] old_keys` | List of previous master keys (used by `nfc.format()` to recover older cards) |
 
 ## Running
 
@@ -128,22 +166,48 @@ journalctl --user -u schluesselkasten.service -f
 ./stop.sh
 ```
 
+### Hardware Watchdog
+
+To enable the RPi hardware watchdog (required for the watchdog feature to work):
+
+```
+# /boot/config.txt
+dtparam=watchdog=on
+```
+
+## Testing
+
+The test suite covers all hardware-independent logic and runs in CI on every push. No Raspberry Pi hardware is required.
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+CI is configured via `.github/workflows/test.yml` (Ubuntu, Python 3.12).
+
 ## Project Structure
 
-| File | Description |
+| Path | Description |
 |------|-------------|
-| `main.py` | Entry point: loads config, sets up logging, starts background tasks and GUI |
-| `hardware_V2.py` | Hardware abstraction: I2C, SPI, PWM, GPIO, LEDs, sensors |
-| `compartment.py` | Compartment class: lock control, door status, LED assignment |
+| `main.py` | Entry point: loads config, sets up logging, watchdog, hardware, starts GUI |
+| `version.py` | Single `__version__` definition shared by all modules |
+| `hardware_V2.py` | Hardware abstraction: `setup(hw_revision)` initialises all peripherals; `HW_CONFIGS` table selects pins/buses by revision |
+| `compartment.py` | `Compartment` class: lock control, door status, LED assignment |
 | `nfc.py` | NFC reader interface: card check, personalisation, format |
-| `flink.py` | Flink REST API client and logging handler |
-| `networking.py` | MQTT client and ping connectivity check |
-| `ui.py` | Graphical user interface |
+| `flink.py` | Flink REST API client and log handler |
+| `networking.py` | MQTT client, command authentication, ping connectivity check |
+| `ui.py` | Graphical user interface (Flet) |
 | `bq25628.py` | Battery charger / fuel gauge driver (BQ25628) |
 | `schluesselkasten.service` | Systemd user service unit file |
 | `start.sh` / `stop.sh` | Helper scripts to start and stop the application |
 | `assets/` | UI assets and settings files |
-| `testing/` | Test scripts |
+| `assets/settings/secrets.toml.example` | Template for `secrets.toml` |
+| `requirements.txt` | Curated runtime dependencies |
+| `requirements-dev.txt` | Additional dependencies for running tests |
+| `tests/` | Automated pytest test suite (hardware-free) |
+| `testing/` | Manual hardware test scripts |
+| `.github/workflows/test.yml` | CI workflow (unit tests on Ubuntu) |
 
 ## License
 
