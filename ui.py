@@ -634,7 +634,8 @@ class UI():
 
     def toggle_charging(self, e):
         self.settings["charging"] = e.control.value
-        hardware.battery_monitor.enable_charging(e.control.value)
+        if hardware.battery_monitor is not None:
+            hardware.battery_monitor.enable_charging(e.control.value)
         self.toml.write(self.settings)
         self.page.update()
 
