@@ -207,9 +207,11 @@ def background_tasks(ui):
         if time.time() > last_30s + 30:
             sys_messages = hardware.get_sys_messages()
             if sys_messages:
-                if "rpi" not in errors or errors["rpi"] != sys_messages:
-                    with errors_lock:
+                with errors_lock:
+                    changed = errors.get("rpi") != sys_messages
+                    if changed:
                         errors["rpi"] = sys_messages
+                if changed:
                     logger.warning(f"System messages: {sys_messages}.")
             else:
                 with errors_lock:
