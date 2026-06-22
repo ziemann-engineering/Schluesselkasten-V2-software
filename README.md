@@ -166,6 +166,18 @@ journalctl --user -u schluesselkasten.service -f
 ./stop.sh
 ```
 
+### Deploy (pull from GitHub + update version)
+
+```bash
+./deploy.sh
+```
+
+The deploy script:
+1. Stops the systemd user service (if running).
+2. Runs `git pull` to fetch the latest code from GitHub.
+3. Reads the most recent git tag and writes it into `version.py` as `__version__`.
+4. Restarts the systemd user service.
+
 ### Hardware Watchdog
 
 To enable the RPi hardware watchdog (required for the watchdog feature to work):
@@ -201,6 +213,7 @@ CI is configured via `.github/workflows/test.yml` (Ubuntu, Python 3.12).
 | `bq25628.py` | Battery charger / fuel gauge driver (BQ25628) |
 | `schluesselkasten.service` | Systemd user service unit file |
 | `start.sh` / `stop.sh` | Helper scripts to start and stop the application |
+| `deploy.sh` | Pull latest code from GitHub, set version from git tag, restart service |
 | `assets/` | UI assets and settings files |
 | `assets/settings/secrets.toml.example` | Template for `secrets.toml` |
 | `requirements.txt` | Curated runtime dependencies |
