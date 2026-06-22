@@ -67,7 +67,7 @@ def connect_mqtt():
 
 # process received command
 def process_mqtt_command(payload):
-    parts = payload.split(" ")
+    parts = payload.split()
     # First word must be the shared command token for authentication.
     if not parts or parts[0] != _command_token:
         logger.warning("MQTT command rejected: missing or invalid token.")
@@ -81,14 +81,26 @@ def process_mqtt_command(payload):
         comp = parts[1]
         if comp == "all":
             logger.info(f"Open compartments: {hardware.check_all()}")
-        elif int(comp) > 0 and int(comp) <= len(hardware.compartments):
-            logger.info(f"Compartment {comp} status: door open: {hardware.compartments[comp].get_inputs()}, door status saved: {hardware.compartments[comp].door_status}, content status: {hardware.compartments[comp].content_status}.")
+        else:
+            try:
+                comp_int = int(comp)
+            except ValueError:
+                logger.warning(f"MQTT status command rejected: invalid compartment '{comp}'.")
+                return
+            if 0 < comp_int <= len(hardware.compartments):
+                logger.info(f"Compartment {comp} status: door open: {hardware.compartments[comp].is_open()}, door status saved: {hardware.compartments[comp].door_status}, content status: {hardware.compartments[comp].content_status}.")
     elif command == "open" and len(parts) == 2:
         comp = parts[1]
         if comp == "all":
             hardware.open_all()
-        elif int(comp) > 0 and int(comp) <= len(hardware.compartments):
-            hardware.compartments[comp].open()
+        else:
+            try:
+                comp_int = int(comp)
+            except ValueError:
+                logger.warning(f"MQTT open command rejected: invalid compartment '{comp}'.")
+                return
+            if 0 < comp_int <= len(hardware.compartments):
+                hardware.compartments[comp].open()
         logger.info(f"Compartment open sent from MQTT broker: {comp}")
     elif command == "restart" and len(parts) == 2:
         if parts[1] == "device":
