@@ -39,28 +39,30 @@ class Compartment():
 
     def set_LEDs(self, color):
         for LED in self.LEDs:
-            #self.LED_connector[LED] = color # V1
-            # V2
+            # Detect RGBW strip via Pi5Neo's pixel_type attribute (value is 'RGBW' or 'GRBW')
+            pt_val = getattr(getattr(self.LED_connector, 'pixel_type', None), 'value', '')
+            is_rgbw = pt_val in ('RGBW', 'GRBW')
+
             if color == "white":
-                if self.LED_connector.colors == "RGBW":
-                    self.LED_connector.set_led_color(LED, (0,0,0,255))
+                if is_rgbw:
+                    self.LED_connector.set_led_color(LED, 0, 0, 0, 255)
                 else:
-                    self.LED_connector.set_led_color(LED, (255,255,255))
+                    self.LED_connector.set_led_color(LED, 255, 255, 255)
             elif color == "off":
-                if self.LED_connector.colors == "RGBW":
-                    self.LED_connector.set_led_color(LED, (0,0,0,0))
+                if is_rgbw:
+                    self.LED_connector.set_led_color(LED, 0, 0, 0, 0)
                 else:
-                    self.LED_connector.set_led_color(LED, (0,0,0))
+                    self.LED_connector.set_led_color(LED, 0, 0, 0)
             else:
                 try:
-                    if len(color) == 3 and self.LED_connector.colors == "RGBW":
+                    if len(color) == 3 and is_rgbw:
                         color = color + (0,)
-                    if len(color) == 4 and self.LED_connector.colors == "RGB":
-                        color = color[:3]                            
-                    self.LED_connector.set_led_color(LED, color)
+                    if len(color) == 4 and not is_rgbw:
+                        color = color[:3]
+                    self.LED_connector.set_led_color(LED, *color)
                 except Exception:
                     pass
-            self.LED_connector.update_strip(sleep_duration=0.001)                  
+            self.LED_connector.update_strip(sleep_duration=0.001)
             
     def is_open(self):
         is_door_open = True

@@ -18,7 +18,7 @@ import time
 
 import compartment
 
-from pi5neo import Pi5Neo as SPIneo
+from pi5neo import Pi5Neo as SPIneo, EPixelType
 
 from rpi_hardware_pwm import HardwarePWM
 
@@ -136,9 +136,9 @@ def setup(hw_revision):
     CD.value = False  # enable charging
 
     # LED connectors
-    LED_connector_1 = SPIneo('/dev/spidev0.0', 40, 1200)
+    LED_connector_1 = SPIneo('/dev/spidev0.0', 40, 1200, quiet_mode=True)
     # LED_connector_2 = SPIneo('/dev/spidev4.0', 40, 1000)
-    LED_connector_3 = SPIneo('/dev/spidev1.0', 3, 1000, "RGBW")
+    LED_connector_3 = SPIneo('/dev/spidev1.0', 3, 1000, pixel_type=EPixelType.GRBW, quiet_mode=True)
 
     LED_connector_1.clear_strip()
     LED_connector_1.update_strip(sleep_duration=0.001)

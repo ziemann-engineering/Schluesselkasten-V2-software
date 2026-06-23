@@ -193,51 +193,51 @@ def test_open_caps_on_time_to_maximum():
 # set_LEDs
 # ---------------------------------------------------------------------------
 
-def _make_comp_with_led(colors="RGB"):
+def _make_comp_with_led(pixel_type_value="GRB"):
     comp, *_ = make_compartment()
     mock_connector = MagicMock()
-    mock_connector.colors = colors
+    mock_connector.pixel_type.value = pixel_type_value
     comp.LED_connector = mock_connector
     comp.LEDs = [0]
     return comp, mock_connector
 
 
 def test_set_leds_white_rgbw():
-    comp, connector = _make_comp_with_led("RGBW")
+    comp, connector = _make_comp_with_led("GRBW")
     comp.set_LEDs("white")
-    connector.set_led_color.assert_called_once_with(0, (0, 0, 0, 255))
+    connector.set_led_color.assert_called_once_with(0, 0, 0, 0, 255)
 
 
 def test_set_leds_white_rgb():
-    comp, connector = _make_comp_with_led("RGB")
+    comp, connector = _make_comp_with_led("GRB")
     comp.set_LEDs("white")
-    connector.set_led_color.assert_called_once_with(0, (255, 255, 255))
+    connector.set_led_color.assert_called_once_with(0, 255, 255, 255)
 
 
 def test_set_leds_off_rgbw():
-    comp, connector = _make_comp_with_led("RGBW")
+    comp, connector = _make_comp_with_led("GRBW")
     comp.set_LEDs("off")
-    connector.set_led_color.assert_called_once_with(0, (0, 0, 0, 0))
+    connector.set_led_color.assert_called_once_with(0, 0, 0, 0, 0)
 
 
 def test_set_leds_off_rgb():
-    comp, connector = _make_comp_with_led("RGB")
+    comp, connector = _make_comp_with_led("GRB")
     comp.set_LEDs("off")
-    connector.set_led_color.assert_called_once_with(0, (0, 0, 0))
+    connector.set_led_color.assert_called_once_with(0, 0, 0, 0)
 
 
 def test_set_leds_rgb_tuple_on_rgbw_connector_pads_with_zero():
     """A 3-element colour tuple should be padded to 4 elements for RGBW strips."""
-    comp, connector = _make_comp_with_led("RGBW")
+    comp, connector = _make_comp_with_led("GRBW")
     comp.set_LEDs((100, 150, 200))
-    connector.set_led_color.assert_called_once_with(0, (100, 150, 200, 0))
+    connector.set_led_color.assert_called_once_with(0, 100, 150, 200, 0)
 
 
 def test_set_leds_rgbw_tuple_on_rgb_connector_is_truncated():
     """A 4-element colour tuple should be truncated to 3 elements for RGB strips."""
-    comp, connector = _make_comp_with_led("RGB")
+    comp, connector = _make_comp_with_led("GRB")
     comp.set_LEDs((100, 150, 200, 255))
-    connector.set_led_color.assert_called_once_with(0, (100, 150, 200))
+    connector.set_led_color.assert_called_once_with(0, 100, 150, 200)
 
 
 def test_set_leds_calls_update_strip():

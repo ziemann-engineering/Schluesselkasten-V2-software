@@ -161,15 +161,18 @@ def _watchdog_loop(fd, interval=10):
         time.sleep(interval)
 
 _watchdog_fd = None
-try:
-    _watchdog_fd = os.open('/dev/watchdog', os.O_WRONLY)
-    _watchdog_thread = threading.Thread(
-        target=_watchdog_loop, args=(_watchdog_fd,), daemon=True, name="watchdog"
-    )
-    _watchdog_thread.start()
-    logger.info("Hardware watchdog enabled.")
-except OSError as e:
-    logger.warning(f"Could not open hardware watchdog (running without it): {e}")
+if settings.get("hardware_watchdog", False):
+    try:
+        _watchdog_fd = os.open('/dev/watchdog', os.O_WRONLY)
+        _watchdog_thread = threading.Thread(
+            target=_watchdog_loop, args=(_watchdog_fd,), daemon=True, name="watchdog"
+        )
+        _watchdog_thread.start()
+        logger.info("Hardware watchdog enabled.")
+    except OSError as e:
+        logger.warning(f"Could not open hardware watchdog (running without it): {e}")
+else:
+    logger.info("Hardware watchdog disabled (hardware_watchdog = false in settings.toml).")
 
 # ---------------------------------------------------------------------------
 # BACKGROUND TASKS

@@ -80,7 +80,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Restart service
+# 6. Ensure /dev/watchdog is accessible (udev rule)
+# ---------------------------------------------------------------------------
+UDEV_RULE='KERNEL=="watchdog", MODE="0660", GROUP="gpio"'
+UDEV_FILE="/etc/udev/rules.d/99-watchdog.rules"
+if [ ! -f "$UDEV_FILE" ] || [ "$(cat "$UDEV_FILE")" != "$UDEV_RULE" ]; then
+    echo "[deploy] Installing udev watchdog rule ..."
+    echo "$UDEV_RULE" | sudo tee "$UDEV_FILE" > /dev/null
+    sudo udevadm control --reload-rules && sudo udevadm trigger
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Restart service
 # ---------------------------------------------------------------------------
 if [ "$NO_RESTART" = false ]; then
     echo "[deploy] Starting $SERVICE_NAME ..."
